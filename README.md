@@ -1,6 +1,6 @@
 # tlog
 
-Minimal, single-header tracing logger for C++ with browser-based analysis.
+Minimal, single-header tracing logger for C++ with high-performance browser analysis and a feature-rich CLI.
 
 ## Quick Start
 
@@ -19,26 +19,37 @@ int main() {
 }
 ```
 
-### CLI
+### CLI Analysis
+The `tlog` utility provides immediate terminal-based insights:
+
 ```bash
-tlog tail app.log                     # Live stream
-tlog json app.log > out.json          # Export
-tlog diff app.log <id1> <id2>         # Compare traces
+# General analysis
+tlog stats app.log                     # Latency p95/p99, error rates, event counts
+tlog tail app.log                      # Real-time stream of incoming traces
+tlog scan app.log "user:alice"         # Filtered event list with timestamps
+
+# Deep dive
+tlog trace app.log <id_or_prefix>      # Render beautiful indented tree for one trace
+tlog diff app.log <id1> <id2>          # Side-by-side comparison of two trace executions
+
+# Export
+tlog json app.log > data.json          # Convert to JSON for custom processing
 ```
 
 ### Browser Viewer
-Open `viewer.html`, drag in your `.log` file.
+Open `viewer.html` and drag in your `.log` file.
 / or use it [here](https://timuzkas.github.io/tlog/)
 
-**Views:**
-- **Simple** – Indented tree with timing
-- **Gantt** – Horizontal bars showing scope durations
-- **Heatmap** – Scatter plot of all traces (X=time, Y=latency, red=error)
-
+**Key Features:**
+- **Heatmap Explorer**
+- **Dynamic Filtering** – by tag (`user:alice`), duration (`>500`), or level (`err`).
+- **Gantt Chart** – Visualizes nested `T_SCOPE` timings.
 
 ## Log Format
-Fixed-width columnar:
+Fixed-width columnar for fast grep/awk/sed:
 
-TIMESTAMP        TRACE_ID         SPAN_ID          LVL [TAGS] MSG
+`TIMESTAMP(hex) TRACE_ID(hex) SPAN_ID(hex) LVL [TAGS;] MSG`
 
+```text
 17a2b9c0e1200000 8f1e2a3b4c5d6e7f 1111111111111111 2 [user:alice;] Card declined
+```
