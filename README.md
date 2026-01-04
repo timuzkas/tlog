@@ -1,4 +1,4 @@
-# TLOG
+# tlog
 
 Minimal, single-header tracing logger for C++ with browser-based analysis.
 
