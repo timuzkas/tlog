@@ -28,6 +28,7 @@ tlog diff app.log <id1> <id2>         # Compare traces
 
 ### Browser Viewer
 Open `viewer.html`, drag in your `.log` file.
+/ or use it [here](https://timuzkas.github.io/tlog/)
 
 **Views:**
 - **Simple** – Indented tree with timing
