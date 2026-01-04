@@ -1,72 +1,71 @@
 #include "tlog.hpp"
-#include <atomic>
-#include <chrono>
-#include <random>
-#include <thread>
 #include <vector>
+#include <iostream>
 
-using namespace std;
-
-void microservice_b() {
-  T_SCOPE("service_b_internal");
-  this_thread::sleep_for(chrono::milliseconds(2));
-  T_INFO("Calculation finished");
+void db_operation(int depth) {
+    T_SCOPE("database_query");
+    T_TAG("op_type", "select");
+    std::this_thread::sleep_for(std::chrono::microseconds(10));
+    
+    if (depth > 0 && rand() % 5 == 0) {
+        T_SCOPE("cache_lookup");
+        T_INFO("cache miss - fetching from disk");
+    }
 }
 
-void microservice_a(int id) {
-  T_SCOPE("service_a_gateway");
-  if (id % 1000 == 0) {
-    T_ERR("Critical: Upstream service timeout");
-    return;
-  }
-  T_INFO("Forwarding request to B");
-  microservice_b();
+void external_api_call() {
+    T_SCOPE("api_gateway_request");
+    T_TAG("endpoint", "/v1/validate");
+    
+    if (rand() % 20 == 0) {
+        T_ERR("connection reset by peer");
+    } else {
+        T_INFO("payload delivered");
+    }
 }
 
-void db_op(int id) {
-  T_SCOPE("postgres_query");
-  this_thread::sleep_for(chrono::milliseconds(1));
-  if (id == 420) T_ERR("Deadlock detected");
-  else T_INFO("Row updated");
+void process_request(int id) {
+    T_SCOPE("http_request");
+    T_TAG("request_id", std::to_string(id));
+    T_TAG("user_id", std::to_string(rand() % 1000));
+    T_TAG("region", (rand() % 2 == 0 ? "us-east" : "eu-west"));
+
+    {
+        T_SCOPE("auth_middleware");
+        std::this_thread::sleep_for(std::chrono::microseconds(5));
+        T_INFO("token validated");
+    }
+
+    for (int i = 0; i < (1 + rand() % 3); ++i) {
+        db_operation(i);
+    }
+
+    if (rand() % 10 == 0) {
+        external_api_call();
+    }
+
+    T_INFO("response sent 200 OK");
 }
 
-void run_request(int id) {
-  T_SCOPE("http_ingress");
-  
-  T_INFO("Incoming req " + to_string(id));
-  
-  thread t_a(microservice_a, id);
-  db_op(id);
-  t_a.join();
+int main(int argc, char** argv) {
+    int iterations = (argc > 1) ? std::stoi(argv[1]) : 10000;
+    
+    T_INIT("stress.log");
+    T_SAMPLE(1.0); // Sample everything for stress testing
 
-  if (id % 500 == 0) T_WARN("High latency detected on cleanup");
-}
+    std::cout << "Generating " << iterations << " traces to stress.log..." << std::endl;
 
-int main() {
-  tlog::Logger::get().open("stress.log");
-  
-  const int total = 10000;
-  const int concurrency = 16;
-  atomic<int> count{0};
-  vector<thread> workers;
+    std::vector<std::thread> workers;
+    for (int t = 0; t < 4; ++t) {
+        workers.emplace_back([&, t]() {
+            for (int i = 0; i < iterations / 4; ++i) {
+                process_request(t * 100000 + i);
+            }
+        });
+    }
 
-  auto start = chrono::high_resolution_clock::now();
+    for (auto& w : workers) w.join();
 
-  for (int i = 0; i < concurrency; ++i) {
-    workers.emplace_back([&] {
-      while (true) {
-        int id = count.fetch_add(1);
-        if (id >= total) break;
-        run_request(id);
-      }
-    });
-  }
-
-  for (auto &t : workers) t.join();
-
-  auto end = chrono::high_resolution_clock::now();
-  auto ms = chrono::duration_cast<chrono::milliseconds>(end - start).count();
-
-  printf("Finished 10k requests in %lldms\n", ms);
-  return 0;
+    std::cout << "Done. Closing logger..." << std::endl;
+    return 0;
 }
