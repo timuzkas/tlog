@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>tlog</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --bg: #000; --fg: #fff; --dim: #555; --border: #1a1a1a; --hover: #0a0a0a; --err: #ff3b3b; --ok: #22c55e; --warn: #eab308; }
+
+body { font-family: "SF Mono", "Consolas", monospace; background: var(--bg); color: var(--fg); height: 100vh; overflow: hidden; }
+
+#drop { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; z-index: 100; background: var(--bg); transition: opacity 0.3s; }
+#drop.hidden { opacity: 0; pointer-events: none; }
+#drop h1 { font-weight: 300; font-size: 20px; letter-spacing: 4px; }
+#drop .box { width: 280px; height: 180px; border: 1px dashed var(--dim); display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--dim); transition: 0.2s; }
+#drop.drag .box { border-color: var(--fg); color: var(--fg); }
+
+#app { display: none; height: 100vh; grid-template-columns: 340px 1fr; grid-template-rows: 50px 1fr; }
+#app.active { display: grid; }
+
+header { grid-column: 1 / -1; padding: 0 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 11px; }
+header h1 { font-weight: 400; font-size: 12px; letter-spacing: 2px; }
+#stats { display: flex; gap: 24px; color: var(--dim); }
+#stats b { color: var(--fg); margin-left: 6px; }
+
+#sidebar { border-right: 1px solid var(--border); display: flex; flex-direction: column; contain: strict; }
+#search { padding: 12px 16px; background: transparent; border: none; border-bottom: 1px solid var(--border); color: var(--fg); font: inherit; font-size: 12px; outline: none; }
+#list { flex: 1; overflow-y: auto; contain: strict; }
+
+/* Sidebar Entry */
+.t { padding: 14px 20px; border-bottom: 1px solid var(--border); cursor: pointer; position: relative; border-left: 3px solid transparent; transition: background 0.1s; }
+.t:hover { background: var(--hover); }
+.t.active { background: var(--hover); border-left-color: var(--fg); }
+.t.err { border-left-color: var(--err); }
+.t.err.active { border-left-width: 6px; }
+
+.t .id { font-size: 12px; margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; }
+.t .m { font-size: 10px; color: var(--dim); display: flex; justify-content: space-between; }
+.t.err .id::after { content: "!"; color: var(--err); font-weight: bold; }
+
+#main { overflow-y: auto; padding: 24px 32px; contain: strict; }
+#empty { height: 100%; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 12px; }
+#view { display: none; }
+#view.active { display: block; }
+#view h2 { font-weight: 400; font-size: 13px; margin-bottom: 4px; }
+#view .meta { font-size: 11px; color: var(--dim); margin-bottom: 24px; }
+
+.r { display: flex; padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
+.r:hover { background: var(--hover); }
+.r .ts { width: 70px; color: var(--dim); flex-shrink: 0; }
+.r .du { width: 70px; text-align: right; color: var(--warn); flex-shrink: 0; padding-right: 12px; }
+.r .tr { color: var(--dim); white-space: pre; }
+.r .ms { flex: 1; }
+.r.s .ms { color: var(--ok); }
+.r.x .ms { color: var(--err); font-weight: bold; }
+.r.x .ms::before { content: "× "; }
+
+.bar { display: inline-block; height: 3px; background: var(--dim); margin-left: 12px; vertical-align: middle; opacity: 0.2; }
+</style>
+</head>
+<body>
+
+<div id="drop">
+    <h1>TLOG</h1>
+    <div class="box">drop .log file</div>
+</div>
+
+<div id="app">
+    <header>
+        <h1>TLOG</h1>
+        <div id="stats">
+            <span>traces<b id="s-c">0</b></span>
+            <span>errors<b id="s-e">0</b></span>
+            <span>p95<b id="s-p">0ms</b></span>
+        </div>
+    </header>
+    <div id="sidebar">
+        <input type="text" id="search" placeholder="search...">
+        <div id="list"></div>
+    </div>
+    <div id="main">
+        <div id="empty">select a trace</div>
+        <div id="view">
+            <h2 id="v-id"></h2>
+            <div class="meta" id="v-m"></div>
+            <div id="rows"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const traces = new Map();
+let active = null;
+let maxDur = 0;
+
+const dom = {
+    drop: document.getElementById('drop'),
+    app: document.getElementById('app'),
+    list: document.getElementById('list'),
+    search: document.getElementById('search'),
+    empty: document.getElementById('empty'),
+    view: document.getElementById('view'),
+    rows: document.getElementById('rows'),
+    sC: document.getElementById('s-c'),
+    sE: document.getElementById('s-e'),
+    sP: document.getElementById('s-p'),
+    vId: document.getElementById('v-id'),
+    vM: document.getElementById('v-m')
+};
+
+function parse(text) {
+    traces.clear();
+    const lines = text.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.length < 30) continue;
+        const s1 = line.indexOf(' ');
+        const s2 = line.indexOf(' ', s1 + 1);
+        const s3 = line.indexOf(' ', s2 + 1);
+        const s4 = line.indexOf(' ', s3 + 1);
+        const ts = parseInt(line.slice(0, s1), 16);
+        const tid = line.slice(s1 + 1, s2);
+        const lvl = parseInt(line.slice(s3 + 1, s4));
+        let msg = (line[s4 + 1] === '[') ? line.slice(line.indexOf(']', s4) + 2) : line.slice(s4 + 1);
+        
+        let t = traces.get(tid);
+        if (!t) { t = { id: tid, logs: [], start: ts, end: ts, err: false }; traces.set(tid, t); }
+        t.logs.push({ ts, lvl, msg });
+        t.end = ts;
+        if (lvl === 2) t.err = true;
+    }
+    
+    let errs = 0;
+    const durs = [];
+    traces.forEach(t => {
+        t.dur = (t.end - t.start) / 1e6;
+        if (t.dur > maxDur) maxDur = t.dur;
+        durs.push(t.dur);
+        if (t.err) errs++;
+    });
+    durs.sort((a, b) => a - b);
+    dom.sC.textContent = traces.size;
+    dom.sE.textContent = errs;
+    dom.sP.textContent = (durs[Math.floor(durs.length * 0.95)] || 0).toFixed(1) + 'ms';
+    
+    renderList('');
+}
+
+function renderList(q) {
+    const query = q.toLowerCase();
+    const all = Array.from(traces.values());
+    
+    const filtered = all.filter(t => {
+        if (!query) return true;
+        if (t.id.includes(query)) return true;
+        return t.logs.some(l => l.msg.toLowerCase().includes(query));
+    });
+
+    // Sort: errors first, then by start time descending
+    filtered.sort((a, b) => {
+        if (a.err !== b.err) return b.err - a.err;
+        return b.start - a.start;
+    });
+
+    const visible = filtered.slice(0, 150);
+    let html = '';
+    for (let i = 0; i < visible.length; i++) {
+        const t = visible[i];
+        html += `<div class="t${t.err ? ' err' : ''}${t.id === active ? ' active' : ''}" data-id="${t.id}">
+            <div class="id"><span>${t.id.substring(0, 16)}</span></div>
+            <div class="m"><span>${t.logs.length} events</span><span>${t.dur.toFixed(1)}ms</span></div>
+        </div>`;
+    }
+    dom.list.innerHTML = html;
+}
+
+function renderTrace(t) {
+    dom.vId.textContent = t.id;
+    dom.vM.textContent = `${t.logs.length} events · ${t.dur.toFixed(2)}ms`;
+    let html = '';
+    let indent = 0;
+    const stack = [];
+    const logs = t.logs;
+    const len = Math.min(logs.length, 1000);
+    
+    for (let i = 0; i < len; i++) {
+        const l = logs[i];
+        const isS = l.msg.startsWith('>');
+        const isE = l.msg.startsWith('<');
+        if (isE && indent > 0) indent--;
+        const rel = (l.ts - t.start) / 1e6;
+        let dur = '';
+        if (isE && stack.length) dur = ((l.ts - stack.pop()) / 1e6).toFixed(1);
+        if (isS) stack.push(l.ts);
+        
+        const cls = isS ? 's' : (isE ? 'e' : (l.lvl === 2 ? 'x' : ''));
+        const tree = '  │ '.repeat(indent) + (isS ? '┌ ' : (isE ? '└ ' : '├ '));
+        const msg = isS || isE ? l.msg.slice(2) : l.msg;
+        const barW = Math.round((rel / t.dur) * 60);
+        
+        html += `<div class="r${cls ? ' ' + cls : ''}"><span class="ts">${rel.toFixed(2)}ms</span><span class="du">${dur}</span><span class="tr">${tree}</span><span class="ms">${msg}<span class="bar" style="width:${barW}px"></span></span></div>`;
+        if (isS) indent++;
+    }
+    dom.rows.innerHTML = html;
+    dom.empty.style.display = 'none';
+    dom.view.classList.add('active');
+}
+
+let searchTimer;
+dom.search.addEventListener('input', e => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => renderList(e.target.value), 100);
+});
+
+dom.list.addEventListener('click', e => {
+    const el = e.target.closest('.t');
+    if (!el) return;
+    active = el.dataset.id;
+    renderList(dom.search.value);
+    renderTrace(traces.get(active));
+});
+
+document.body.addEventListener('dragover', e => { e.preventDefault(); dom.drop.classList.add('drag'); });
+document.body.addEventListener('drop', e => {
+    e.preventDefault(); dom.drop.classList.remove('drag');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = ev => { parse(ev.target.result); dom.drop.classList.add('hidden'); dom.app.classList.add('active'); };
+    r.readAsText(file);
+});
+</script>
+</body>
+</html>
