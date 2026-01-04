@@ -27,7 +27,7 @@ tlog diff app.log <id1> <id2>         # Compare traces
 ```
 
 ### Browser Viewer
-Open `tlog-viewer.html`, drag in your `.log` file.
+Open `viewer.html`, drag in your `.log` file.
 
 **Views:**
 - **Simple** – Indented tree with timing
