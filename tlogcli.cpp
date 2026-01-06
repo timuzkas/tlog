@@ -106,7 +106,7 @@ void run_stats(const string& path) {
     }
 
     vector<double> durs;
-    for (auto const& [tid, start] : starts) durs.push_back((ends[tid] - start) / 1e6);
+    for (auto const& [tid, start] : starts) durs.push_back((double)(ends[tid] - start) / 1e6);
     sort(durs.begin(), durs.end());
 
     cout << "\n" << string(40, '-') << "\n";
@@ -147,7 +147,7 @@ void run_trace(const string& path, const string& query) {
         bool is_s = (e.msg.find("> ") == 0), is_e = (e.msg.find("< ") == 0);
         if (is_e && indent > 0) indent--;
 
-        cout << fixed << setprecision(2) << setw(8) << (e.ts - start)/1e6 << "ms | ";
+        cout << fixed << setprecision(2) << setw(8) << (double)(e.ts - start)/1e6 << "ms | ";
         for (int i = 0; i < indent; i++) cout << DIM << "│  " << R;
         
         if (is_s) cout << GRN << "┌ " << e.msg.substr(2) << R;
@@ -205,14 +205,47 @@ void run_diff(const string& path, const string& id1, const string& id2) {
     }
 }
 
+void show_help() {
+    cout << "tlog CLI explorer\n\n";
+    cout << "USAGE:\n";
+    cout << "  tlog <command> <logfile> [args]\n\n";
+    cout << "COMMANDS:\n";
+    cout << "  scan  <file> [filter]      List all events, optionally filtered\n";
+    cout << "  trace <file> <id|prefix>   Show indented tree for a specific trace\n";
+    cout << "  stats <file>               Calculate latency percentiles and error rates\n";
+    cout << "  tail  <file>               Real-time stream of incoming events\n";
+    cout << "  json  <file>               Export entire log as JSON\n";
+    cout << "  diff  <file> <id1> <id2>   Compare two traces side-by-side\n";
+    cout << "  help                       Show this menu\n";
+}
+
 int main(int argc, char** argv) {
-    if (argc < 3) return 1;
+    if (argc < 2 || string(argv[1]) == "help" || string(argv[1]) == "--help") {
+        show_help();
+        return 0;
+    }
+    
+    if (argc < 3) {
+        cerr << RED << "Error: Log file path required." << R << "\n";
+        return 1;
+    }
+
     string cmd = argv[1], path = argv[2];
     if (cmd == "scan") run_scan(path, (argc > 3 ? argv[3] : ""));
-    else if (cmd == "trace" && argc > 3) run_trace(path, argv[3]);
+    else if (cmd == "trace") {
+        if (argc < 4) { cerr << RED << "Error: Trace ID required for 'trace' command." << R << "\n"; return 1; }
+        run_trace(path, argv[3]);
+    }
     else if (cmd == "stats") run_stats(path);
     else if (cmd == "tail") run_tail(path);
     else if (cmd == "json") run_json(path);
-    else if (cmd == "diff" && argc > 4) run_diff(path, argv[3], argv[4]);
+    else if (cmd == "diff") {
+        if (argc < 5) { cerr << RED << "Error: Two IDs required for 'diff' command." << R << "\n"; return 1; }
+        run_diff(path, argv[3], argv[4]);
+    } else {
+        cerr << RED << "Unknown command: " << cmd << R << "\n";
+        show_help();
+        return 1;
+    }
     return 0;
 }
