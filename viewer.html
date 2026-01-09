@@ -1,663 +1,1197 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>tlog explorer</title>
-    <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      :root {
-        --bg: #09090b; --fg: #e4e4e7; --panel: #18181b; --border: #27272a;
-        --dim: #71717a; --accent: #3b82f6; --err: #ef4444; --warn: #eab308; --ok: #22c55e;
-      }
-      body {
-        font-family: "SF Mono", "Consolas", monospace; background: var(--bg);
-        color: var(--fg); height: 100vh; overflow: hidden; display: flex;
-        flex-direction: column; font-size: 13px;
-      }
+    <head>
+        <meta charset="UTF-8" />
+        <title>tlog explorer</title>
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            :root {
+                --bg: #09090b;
+                --fg: #e4e4e7;
+                --panel: #18181b;
+                --border: #27272a;
+                --dim: #71717a;
+                --accent: #3b82f6;
+                --err: #ef4444;
+                --warn: #eab308;
+                --ok: #22c55e;
+            }
+            body {
+                font-family: "SF Mono", "Consolas", monospace;
+                background: var(--bg);
+                color: var(--fg);
+                height: 100vh;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                font-size: 13px;
+            }
 
-      /* Progress Bar */
-      #progress {
-        position: fixed; top: 0; left: 0; height: 3px; background: var(--accent);
-        width: 0; z-index: 200; transition: width 0.15s ease-out;
-        box-shadow: 0 0 10px var(--accent);
-      }
-      #progress.hide { opacity: 0; transition: opacity 0.3s, width 0.15s; }
+            /* Progress Bar */
+            #progress {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 3px;
+                background: var(--accent);
+                width: 0;
+                z-index: 200;
+                transition: width 0.15s ease-out;
+                box-shadow: 0 0 10px var(--accent);
+            }
+            #progress.hide {
+                opacity: 0;
+                transition:
+                    opacity 0.3s,
+                    width 0.15s;
+            }
 
-      /* Drop Overlay */
-      #drop {
-        position: fixed; inset: 0; background: var(--bg); z-index: 99;
-        display: flex; flex-direction: column; align-items: center;
-        justify-content: center; gap: 1rem; transition: opacity 0.2s; cursor: pointer;
-      }
-      #drop.hidden { opacity: 0; pointer-events: none; }
-      #drop .box { padding: 4rem 6rem; border: 1px dashed var(--dim); color: var(--dim); border-radius: 8px; }
-      #drop:hover .box { border-color: var(--fg); color: var(--fg); background: #18181b; }
-      #drop-status { color: var(--dim); font-size: 12px; margin-top: 1rem; min-height: 1.5em; }
+            /* Drop Overlay */
+            #drop {
+                position: fixed;
+                inset: 0;
+                background: var(--bg);
+                z-index: 99;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 1rem;
+                transition: opacity 0.2s;
+                cursor: pointer;
+            }
+            #drop.hidden {
+                opacity: 0;
+                pointer-events: none;
+            }
+            #drop .box {
+                padding: 4rem 6rem;
+                border: 1px dashed var(--dim);
+                color: var(--dim);
+                border-radius: 8px;
+            }
+            #drop:hover .box {
+                border-color: var(--fg);
+                color: var(--fg);
+                background: #18181b;
+            }
+            #drop-status {
+                color: var(--dim);
+                font-size: 12px;
+                margin-top: 1rem;
+                min-height: 1.5em;
+            }
 
-      /* Header */
-      #top {
-        border-bottom: 1px solid var(--border); background: var(--panel);
-        padding: 0.75rem 1rem; display: flex; gap: 1rem; align-items: center;
-      }
-      .logo { font-weight: 700; letter-spacing: 1px; margin-right: 1rem; }
+            /* Header */
+            #top {
+                border-bottom: 1px solid var(--border);
+                background: var(--panel);
+                padding: 0.75rem 1rem;
+                display: flex;
+                gap: 1rem;
+                align-items: center;
+            }
+            .logo {
+                font-weight: 700;
+                letter-spacing: 1px;
+                margin-right: 1rem;
+            }
 
-      /* Search */
-      #filter-wrap { flex: 1; position: relative; }
-      #filter-box {
-        display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
-        background: var(--bg); border: 1px solid var(--border);
-        border-radius: 4px; padding: 4px 8px; transition: border-color 0.2s;
-      }
-      #filter-box:focus-within { border-color: var(--accent); }
-      .icon-search { width: 14px; height: 14px; stroke: var(--dim); stroke-width: 2; fill: none; margin-right: 4px; }
-      .filter-chip {
-        background: #27272a; border: 1px solid #3f3f46; padding: 2px 6px;
-        border-radius: 4px; font-size: 12px; display: flex; align-items: center; gap: 6px; cursor: default;
-      }
-      .filter-chip span { cursor: pointer; font-weight: bold; color: var(--dim); }
-      .filter-chip span:hover { color: var(--err); }
-      #search {
-        border: none; background: transparent; color: var(--fg); flex: 1;
-        min-width: 100px; outline: none; font-family: inherit; font-size: 13px; height: 24px;
-      }
-      #help-box {
-        position: absolute; top: 100%; right: 0; width: 300px; margin-top: 8px;
-        background: #18181b; border: 1px solid #3f3f46; padding: 12px;
-        border-radius: 6px; box-shadow: 0 10px 15px rgba(0,0,0,0.5); z-index: 50;
-        display: none; font-size: 12px; color: #a1a1aa;
-      }
-      #filter-wrap:hover #help-box { display: block; }
-      #help-box table { width: 100%; }
-      #help-box td { padding: 4px 0; }
-      #help-box code { color: var(--accent); background: rgba(59, 130, 246, 0.1); padding: 1px 4px; }
+            /* Search */
+            #filter-wrap {
+                flex: 1;
+                position: relative;
+            }
+            #filter-box {
+                display: flex;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 6px;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 4px 8px;
+                transition: border-color 0.2s;
+            }
+            #filter-box:focus-within {
+                border-color: var(--accent);
+            }
+            .icon-search {
+                width: 14px;
+                height: 14px;
+                stroke: var(--dim);
+                stroke-width: 2;
+                fill: none;
+                margin-right: 4px;
+            }
+            .filter-chip {
+                background: #27272a;
+                border: 1px solid #3f3f46;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 12px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                cursor: default;
+            }
+            .filter-chip span {
+                cursor: pointer;
+                font-weight: bold;
+                color: var(--dim);
+            }
+            .filter-chip span:hover {
+                color: var(--err);
+            }
+            #search {
+                border: none;
+                background: transparent;
+                color: var(--fg);
+                flex: 1;
+                min-width: 100px;
+                outline: none;
+                font-family: inherit;
+                font-size: 13px;
+                height: 24px;
+            }
+            #help-box {
+                position: absolute;
+                top: 100%;
+                right: 0;
+                width: 300px;
+                margin-top: 8px;
+                background: #18181b;
+                border: 1px solid #3f3f46;
+                padding: 12px;
+                border-radius: 6px;
+                box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5);
+                z-index: 50;
+                display: none;
+                font-size: 12px;
+                color: #a1a1aa;
+            }
+            #filter-wrap:hover #help-box {
+                display: block;
+            }
+            #help-box table {
+                width: 100%;
+            }
+            #help-box td {
+                padding: 4px 0;
+            }
+            #help-box code {
+                color: var(--accent);
+                background: rgba(59, 130, 246, 0.1);
+                padding: 1px 4px;
+            }
 
-      /* Stats */
-      #stats { display: flex; gap: 1.5rem; color: var(--dim); font-size: 11px; white-space: nowrap; }
-      #stats b { color: var(--fg); margin-left: 4px; }
+            /* Stats */
+            #stats {
+                display: flex;
+                gap: 1.5rem;
+                color: var(--dim);
+                font-size: 11px;
+                white-space: nowrap;
+            }
+            #stats b {
+                color: var(--fg);
+                margin-left: 4px;
+            }
 
-      /* Layout */
-      #layout { display: flex; flex: 1; overflow: hidden; }
-      #sidebar { width: 340px; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--panel); }
-      #list { flex: 1; overflow-y: auto; }
+            /* Layout */
+            #layout {
+                display: flex;
+                flex: 1;
+                overflow: hidden;
+            }
+            #sidebar {
+                width: 340px;
+                border-right: 1px solid var(--border);
+                display: flex;
+                flex-direction: column;
+                background: var(--panel);
+            }
+            #list {
+                flex: 1;
+                overflow-y: auto;
+            }
 
-      #list-header {
-        padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex;
-        justify-content: space-between; align-items: center; background: #121215;
-        font-size: 11px; color: var(--dim);
-      }
-      #sort-select { background: transparent; color: var(--fg); border: none; font-family: inherit; font-size: 11px; outline: none; text-align: right; cursor: pointer; }
-      #sort-select option { background: var(--panel); }
+            #list-header {
+                padding: 8px 12px;
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background: #121215;
+                font-size: 11px;
+                color: var(--dim);
+            }
+            #sort-select {
+                background: transparent;
+                color: var(--fg);
+                border: none;
+                font-family: inherit;
+                font-size: 11px;
+                outline: none;
+                text-align: right;
+                cursor: pointer;
+            }
+            #sort-select option {
+                background: var(--panel);
+            }
 
-      /* Trace Items */
-      .t { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; border-left: 3px solid transparent; }
-      .t:hover { background: #27272a; }
-      .t.active { background: #27272a; border-left-color: var(--fg); }
-      .t.err { border-left-color: var(--err); }
-      .t .top { display: flex; justify-content: space-between; margin-bottom: 4px; }
-      .t .id { font-weight: 500; font-size: 12px; }
-      .t .bot { display: flex; justify-content: space-between; color: var(--dim); font-size: 11px; }
-      .tags { margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap; }
-      .tag-mini { font-size: 9px; background: #27272a; padding: 1px 4px; border-radius: 2px; color: #a1a1aa; }
-      .tag-mini:hover { color: var(--fg); background: #3f3f46; }
+            /* Trace Items */
+            .t {
+                padding: 10px 14px;
+                border-bottom: 1px solid var(--border);
+                cursor: pointer;
+                border-left: 3px solid transparent;
+            }
+            .t:hover {
+                background: #27272a;
+            }
+            .t.active {
+                background: #27272a;
+                border-left-color: var(--fg);
+            }
+            .t.err {
+                border-left-color: var(--err);
+            }
+            .t .top {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 4px;
+            }
+            .t .id {
+                font-weight: 500;
+                font-size: 12px;
+            }
+            .t .bot {
+                display: flex;
+                justify-content: space-between;
+                color: var(--dim);
+                font-size: 11px;
+            }
+            .tags {
+                margin-top: 4px;
+                display: flex;
+                gap: 4px;
+                flex-wrap: wrap;
+            }
+            .tag-mini {
+                font-size: 9px;
+                background: #27272a;
+                padding: 1px 4px;
+                border-radius: 2px;
+                color: #a1a1aa;
+            }
+            .tag-mini:hover {
+                color: var(--fg);
+                background: #3f3f46;
+            }
 
-      /* Main Content */
-      #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
-      #tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--panel); }
-      .tab { padding: 8px 16px; cursor: pointer; color: var(--dim); border-bottom: 2px solid transparent; font-size: 12px; }
-      .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
-      
-      #content { flex: 1; overflow-y: auto; padding: 1rem 2rem; position: relative; }
-      #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--dim); }
-      
-      #meta { padding-bottom: 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
-      #meta h2 { font-weight: 500; font-size: 16px; margin-bottom: 0.5rem; }
-      .props { display: flex; gap: 1rem; color: var(--dim); font-size: 12px; }
-      .pill { font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-right: 4px; cursor: pointer; }
-      .pill.tag { background: #1e3a8a; color: #bfdbfe; }
+            /* Main Content */
+            #main {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--bg);
+            }
+            #tabs {
+                display: flex;
+                border-bottom: 1px solid var(--border);
+                background: var(--panel);
+            }
+            .tab {
+                padding: 8px 16px;
+                cursor: pointer;
+                color: var(--dim);
+                border-bottom: 2px solid transparent;
+                font-size: 12px;
+            }
+            .tab.active {
+                color: var(--fg);
+                border-bottom-color: var(--accent);
+            }
 
-      /* Log Rows */
-      .r { display: flex; padding: 3px 0; border-bottom: 1px solid #18181b; font-size: 12px; font-family: "JetBrains Mono", monospace; }
-      .r:hover { background: #18181b; }
-      .r .ts { width: 70px; color: var(--dim); flex-shrink: 0; }
-      .r .du { width: 60px; text-align: right; color: var(--warn); flex-shrink: 0; padding-right: 12px; opacity: 0.8; }
-      .r .tr { color: #3f3f46; white-space: pre; font-family: "SF Mono", monospace; }
-      .r .ms { flex: 1; color: #d4d4d8; }
-      .r.s .ms { color: var(--ok); } 
-      .r.x .ms { color: var(--err); font-weight: bold; }
+            #content {
+                flex: 1;
+                overflow-y: auto;
+                padding: 1rem 2rem;
+                position: relative;
+            }
+            #empty {
+                position: absolute;
+                inset: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: var(--dim);
+            }
 
-      /* Heatmap & Gantt */
-      #heatmap-wrap { height: 120px; border-bottom: 1px solid var(--border); background: #000; position: relative; flex-shrink: 0; }
-      canvas { width: 100%; height: 100%; display: block; }
-      #heatmap-tooltip {
-        position: absolute; pointer-events: none; background: rgba(9, 9, 11, 0.95);
-        border: 1px solid #3f3f46; padding: 4px 8px; font-size: 11px; color: #fff;
-        border-radius: 4px; opacity: 0; transition: opacity 0.1s; white-space: nowrap; z-index: 10;
-        transform: translate(-50%, -130%);
-      }
-      .g-row { display: flex; align-items: center; height: 26px; border-bottom: 1px solid var(--border); font-size: 11px; }
-      .g-lbl { width: 180px; padding-left: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #a1a1aa; border-right: 1px solid var(--border); }
-      .g-track { flex: 1; position: relative; height: 100%; }
-      .g-bar { position: absolute; height: 10px; top: 8px; background: #3f3f46; border-radius: 2px; min-width: 2px; }
-      .g-bar.scope { background: #3b82f6; opacity: 0.4; }
-      .g-dur { position: absolute; font-size: 9px; color: #71717a; top: -10px; right: 0; }
-    </style>
-  </head>
-  <body>
+            #meta {
+                padding-bottom: 1rem;
+                border-bottom: 1px solid var(--border);
+                margin-bottom: 1rem;
+            }
+            #meta h2 {
+                font-weight: 500;
+                font-size: 16px;
+                margin-bottom: 0.5rem;
+            }
+            .props {
+                display: flex;
+                gap: 1rem;
+                color: var(--dim);
+                font-size: 12px;
+            }
+            .pill {
+                font-size: 11px;
+                padding: 2px 6px;
+                border-radius: 4px;
+                margin-right: 4px;
+                cursor: pointer;
+            }
+            .pill.tag {
+                background: #1e3a8a;
+                color: #bfdbfe;
+            }
 
-    <div id="progress"></div>
-    <input type="file" id="file-input" hidden />
+            /* Log Rows */
+            .r {
+                display: flex;
+                padding: 3px 0;
+                border-bottom: 1px solid #18181b;
+                font-size: 12px;
+                font-family: "JetBrains Mono", monospace;
+            }
+            .r:hover {
+                background: #18181b;
+            }
+            .r .ts {
+                width: 70px;
+                color: var(--dim);
+                flex-shrink: 0;
+            }
+            .r .du {
+                width: 60px;
+                text-align: right;
+                color: var(--warn);
+                flex-shrink: 0;
+                padding-right: 12px;
+                opacity: 0.8;
+            }
+            .r .tr {
+                color: #3f3f46;
+                white-space: pre;
+                font-family: "SF Mono", monospace;
+            }
+            .r .ms {
+                flex: 1;
+                color: #d4d4d8;
+            }
+            .r.s .ms {
+                color: var(--ok);
+            }
+            .r.x .ms {
+                color: var(--err);
+                font-weight: bold;
+            }
 
-    <div id="drop">
-      <div class="box">Click or Drop .log file here</div>
-      <div id="drop-status"></div>
-    </div>
+            /* Heatmap & Gantt */
+            #heatmap-wrap {
+                height: 120px;
+                border-bottom: 1px solid var(--border);
+                background: #000;
+                position: relative;
+                flex-shrink: 0;
+            }
+            canvas {
+                width: 100%;
+                height: 100%;
+                display: block;
+            }
+            #heatmap-tooltip {
+                position: absolute;
+                pointer-events: none;
+                background: rgba(9, 9, 11, 0.95);
+                border: 1px solid #3f3f46;
+                padding: 4px 8px;
+                font-size: 11px;
+                color: #fff;
+                border-radius: 4px;
+                opacity: 0;
+                transition: opacity 0.1s;
+                white-space: nowrap;
+                z-index: 10;
+                transform: translate(-50%, -130%);
+            }
+            .g-row {
+                display: flex;
+                align-items: center;
+                height: 26px;
+                border-bottom: 1px solid var(--border);
+                font-size: 11px;
+            }
+            .g-lbl {
+                width: 180px;
+                padding-left: 8px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                color: #a1a1aa;
+                border-right: 1px solid var(--border);
+            }
+            .g-track {
+                flex: 1;
+                position: relative;
+                height: 100%;
+            }
+            .g-bar {
+                position: absolute;
+                height: 10px;
+                top: 8px;
+                background: #3f3f46;
+                border-radius: 2px;
+                min-width: 2px;
+            }
+            .g-bar.scope {
+                background: #3b82f6;
+                opacity: 0.4;
+            }
+            .g-dur {
+                position: absolute;
+                font-size: 9px;
+                color: #71717a;
+                top: -10px;
+                right: 0;
+            }
 
-    <div id="top">
-      <div class="logo">tlog</div>
-      <div id="filter-wrap">
-        <div id="filter-box" onclick="dom.search.focus()">
-          <svg class="icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-          <div id="chips"></div>
-          <input id="search" type="text" placeholder="Filter..." autocomplete="off" />
-          <span id="help-btn">?</span>
+            .r {
+                position: relative;
+            }
+            .r .copy-btn {
+                position: absolute;
+                right: 8px;
+                top: 50%;
+                transform: translateY(-50%);
+                background: #3f3f46;
+                border: none;
+                color: #a1a1aa;
+                padding: 2px 8px;
+                border-radius: 3px;
+                font-size: 10px;
+                cursor: pointer;
+                opacity: 0;
+                transition:
+                    opacity 0.15s,
+                    background 0.15s;
+            }
+            .r:hover .copy-btn {
+                opacity: 1;
+            }
+            .r .copy-btn:hover {
+                background: #52525b;
+                color: #fff;
+            }
+            .r .copy-btn:active {
+                background: #22c55e;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="progress"></div>
+        <input type="file" id="file-input" hidden />
+
+        <div id="drop">
+            <div class="box">Click or Drop .log file here</div>
+            <div id="drop-status"></div>
         </div>
-        <div id="help-box">
-          <table>
-            <tr><td><code>key:val</code></td><td>Exact tag match</td></tr>
-            <tr><td><code>err</code></td><td>Show errors only</td></tr>
-            <tr><td><code>&gt;50</code></td><td>Duration > 50ms</td></tr>
-            <tr><td><code>-text</code></td><td>Exclude text</td></tr>
-            <tr><td><code>text</code></td><td>Fuzzy search</td></tr>
-          </table>
-        </div>
-      </div>
-      <div id="stats">
-        <span>Total<b id="s-c">0</b></span>
-        <span>Errors<b id="s-e">0</b></span>
-        <span>P95<b id="s-p">0ms</b></span>
-      </div>
-    </div>
 
-    <div id="layout">
-      <div id="sidebar">
-        <div id="list-header">
-          <span>Filtered: <b id="filtered-count">0</b></span>
-          <select id="sort-select" onchange="applySort()">
-            <option value="start-desc">Newest</option>
-            <option value="start-asc">Oldest</option>
-            <option value="dur-desc">Slowest</option>
-            <option value="dur-asc">Fastest</option>
-          </select>
-        </div>
-        <div id="list"></div>
-      </div>
-
-      <div id="main">
-        <div id="heatmap-wrap">
-          <canvas id="cvs"></canvas>
-          <div id="heatmap-tooltip"></div>
-        </div>
-
-        <div id="tabs">
-          <div class="tab active" onclick="switchView('simple')">Timeline</div>
-          <div class="tab" onclick="switchView('gantt')">Gantt</div>
-        </div>
-
-        <div id="content">
-          <div id="empty">Select a trace to inspect</div>
-          <div id="trace-detail" style="display: none">
-            <div id="meta">
-              <h2 id="m-id"></h2>
-              <div class="props">
-                <span id="m-dur"></span>
-                <span id="m-ev"></span>
-                <span id="m-tags"></span>
-              </div>
+        <div id="top">
+            <div class="logo">tlog</div>
+            <div id="filter-wrap">
+                <div id="filter-box" onclick="dom.search.focus()">
+                    <svg class="icon-search" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <div id="chips"></div>
+                    <input
+                        id="search"
+                        type="text"
+                        placeholder="Filter..."
+                        autocomplete="off"
+                    />
+                    <span id="help-btn">?</span>
+                </div>
+                <div id="help-box">
+                    <table>
+                        <tr>
+                            <td><code>key:val</code></td>
+                            <td>Exact tag match</td>
+                        </tr>
+                        <tr>
+                            <td><code>err</code></td>
+                            <td>Show errors only</td>
+                        </tr>
+                        <tr>
+                            <td><code>&gt;50</code></td>
+                            <td>Duration > 50ms</td>
+                        </tr>
+                        <tr>
+                            <td><code>-text</code></td>
+                            <td>Exclude text</td>
+                        </tr>
+                        <tr>
+                            <td><code>text</code></td>
+                            <td>Fuzzy search</td>
+                        </tr>
+                    </table>
+                </div>
             </div>
-            <div id="simple-view"></div>
-            <div id="gantt-view" style="display:none"></div>
-          </div>
+            <div id="stats">
+                <span>Total<b id="s-c">0</b></span>
+                <span>Errors<b id="s-e">0</b></span>
+                <span>P95<b id="s-p">0ms</b></span>
+            </div>
         </div>
-      </div>
-    </div>
 
-    <script>
-      let traces = [], activeId = null, globalStart = 0, globalEnd = 0, maxDur = 0;
-      let filteredTraces = [], searchTags = [], heatmapPoints = [];
-      const $ = (id) => document.getElementById(id);
-      
-      const dom = {
-        drop: $("drop"), fileInput: $("file-input"), list: $("list"), search: $("search"),
-        chips: $("chips"), cvs: $("cvs"), tooltip: $("heatmap-tooltip"),
-        sC: $("s-c"), sE: $("s-e"), sP: $("s-p"), fCount: $("filtered-count"),
-        detail: $("trace-detail"), empty: $("empty"), simple: $("simple-view"),
-        gantt: $("gantt-view"), mId: $("m-id"), mDur: $("m-dur"), mEv: $("m-ev"),
-        mTags: $("m-tags"), sort: $("sort-select"), progress: $("progress"),
-        dropStatus: $("drop-status"),
-      };
+        <div id="layout">
+            <div id="sidebar">
+                <div id="list-header">
+                    <span>Filtered: <b id="filtered-count">0</b></span>
+                    <select id="sort-select" onchange="applySort()">
+                        <option value="start-desc">Newest</option>
+                        <option value="start-asc">Oldest</option>
+                        <option value="dur-desc">Slowest</option>
+                        <option value="dur-asc">Fastest</option>
+                    </select>
+                </div>
+                <div id="list"></div>
+            </div>
 
-      function setProgress(pct, hide = false) {
-        dom.progress.style.width = pct + "%";
-        if (hide) {
-          setTimeout(() => {
-            dom.progress.classList.add("hide");
-            setTimeout(() => {
-              dom.progress.style.width = "0";
-              dom.progress.classList.remove("hide");
-            }, 300);
-          }, 200);
-        } else {
-          dom.progress.classList.remove("hide");
-        }
-      }
+            <div id="main">
+                <div id="heatmap-wrap">
+                    <canvas id="cvs"></canvas>
+                    <div id="heatmap-tooltip"></div>
+                </div>
 
-      function handleFile(file) {
-        if (!file) return;
-        setProgress(5);
-        dom.dropStatus.textContent = "Reading file...";
-        
-        const r = new FileReader();
-        r.onprogress = (e) => {
-          if (e.lengthComputable) {
-            setProgress(5 + (e.loaded / e.total) * 25);
-          }
-        };
-        r.onload = (ev) => {
-          setProgress(30);
-          dom.dropStatus.textContent = "Parsing...";
-          // Use setTimeout to allow UI update
-          setTimeout(() => parseAsync(ev.target.result), 10);
-        };
-        r.readAsText(file);
-      }
+                <div id="tabs">
+                    <div class="tab active" onclick="switchView('simple')">
+                        Timeline
+                    </div>
+                    <div class="tab" onclick="switchView('gantt')">Gantt</div>
+                </div>
 
-      async function parseAsync(text) {
-        const rawMap = new Map();
-        const lines = text.split("\n");
-        const total = lines.length;
-        globalStart = Infinity; globalEnd = 0; maxDur = 0;
+                <div id="content">
+                    <div id="empty">Select a trace to inspect</div>
+                    <div id="trace-detail" style="display: none">
+                        <div id="meta">
+                            <h2 id="m-id"></h2>
+                            <div class="props">
+                                <span id="m-dur"></span>
+                                <span id="m-ev"></span>
+                                <span id="m-tags"></span>
+                            </div>
+                        </div>
+                        <div id="simple-view"></div>
+                        <div id="gantt-view" style="display: none"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        const CHUNK = 50000;
-        for (let start = 0; start < total; start += CHUNK) {
-          const end = Math.min(start + CHUNK, total);
-          
-          for (let i = start; i < end; i++) {
-            const line = lines[i];
-            if (line.length < 20) continue;
+        <script>
+            let traces = [],
+                activeId = null,
+                globalStart = 0,
+                globalEnd = 0,
+                maxDur = 0;
+            let filteredTraces = [],
+                searchTags = [],
+                heatmapPoints = [];
+            const $ = (id) => document.getElementById(id);
 
-            const s1 = line.indexOf(" ");
-            const s2 = line.indexOf(" ", s1 + 1);
-            const s3 = line.indexOf(" ", s2 + 1);
-            const s4 = line.indexOf(" ", s3 + 1);
+            const dom = {
+                drop: $("drop"),
+                fileInput: $("file-input"),
+                list: $("list"),
+                search: $("search"),
+                chips: $("chips"),
+                cvs: $("cvs"),
+                tooltip: $("heatmap-tooltip"),
+                sC: $("s-c"),
+                sE: $("s-e"),
+                sP: $("s-p"),
+                fCount: $("filtered-count"),
+                detail: $("trace-detail"),
+                empty: $("empty"),
+                simple: $("simple-view"),
+                gantt: $("gantt-view"),
+                mId: $("m-id"),
+                mDur: $("m-dur"),
+                mEv: $("m-ev"),
+                mTags: $("m-tags"),
+                sort: $("sort-select"),
+                progress: $("progress"),
+                dropStatus: $("drop-status"),
+            };
 
-            if (s1 === -1 || s4 === -1) continue;
+            function setProgress(pct, hide = false) {
+                dom.progress.style.width = pct + "%";
+                if (hide) {
+                    setTimeout(() => {
+                        dom.progress.classList.add("hide");
+                        setTimeout(() => {
+                            dom.progress.style.width = "0";
+                            dom.progress.classList.remove("hide");
+                        }, 300);
+                    }, 200);
+                } else {
+                    dom.progress.classList.remove("hide");
+                }
+            }
 
-            const ts = parseInt(line.slice(0, s1), 16);
-            const tid = line.slice(s1 + 1, s2);
-            const lvl = parseInt(line.slice(s3 + 1, s4));
-            let msg = line.slice(s4 + 1);
-            let tagsMap = {};
+            function handleFile(file) {
+                if (!file) return;
+                setProgress(5);
+                dom.dropStatus.textContent = "Reading file...";
 
-            if (msg.startsWith("[")) {
-              const close = msg.indexOf("]");
-              if (close !== -1) {
-                const tagStr = msg.slice(1, close);
-                tagStr.split(";").forEach((pair) => {
-                  const idx = pair.indexOf(":");
-                  if (idx !== -1) {
-                    const k = pair.slice(0, idx).trim().toLowerCase();
-                    const v = pair.slice(idx + 1).trim();
-                    if (k && v) tagsMap[k] = v;
-                  }
+                const r = new FileReader();
+                r.onprogress = (e) => {
+                    if (e.lengthComputable) {
+                        setProgress(5 + (e.loaded / e.total) * 25);
+                    }
+                };
+                r.onload = (ev) => {
+                    setProgress(30);
+                    dom.dropStatus.textContent = "Parsing...";
+                    // Use setTimeout to allow UI update
+                    setTimeout(() => parseAsync(ev.target.result), 10);
+                };
+                r.readAsText(file);
+            }
+
+            async function parseAsync(text) {
+                const rawMap = new Map();
+                const lines = text.split("\n");
+                const total = lines.length;
+                globalStart = Infinity;
+                globalEnd = 0;
+                maxDur = 0;
+
+                const CHUNK = 50000;
+                for (let start = 0; start < total; start += CHUNK) {
+                    const end = Math.min(start + CHUNK, total);
+
+                    for (let i = start; i < end; i++) {
+                        const line = lines[i];
+                        if (line.length < 20) continue;
+
+                        const s1 = line.indexOf(" ");
+                        const s2 = line.indexOf(" ", s1 + 1);
+                        const s3 = line.indexOf(" ", s2 + 1);
+                        const s4 = line.indexOf(" ", s3 + 1);
+
+                        if (s1 === -1 || s4 === -1) continue;
+
+                        const ts = parseInt(line.slice(0, s1), 16);
+                        const tid = line.slice(s1 + 1, s2);
+                        const lvl = parseInt(line.slice(s3 + 1, s4));
+                        let msg = line.slice(s4 + 1);
+                        let tagsMap = {};
+
+                        if (msg.startsWith("[")) {
+                            const close = msg.indexOf("]");
+                            if (close !== -1) {
+                                const tagStr = msg.slice(1, close);
+                                tagStr.split(";").forEach((pair) => {
+                                    const idx = pair.indexOf(":");
+                                    if (idx !== -1) {
+                                        const k = pair
+                                            .slice(0, idx)
+                                            .trim()
+                                            .toLowerCase();
+                                        const v = pair.slice(idx + 1).trim();
+                                        if (k && v) tagsMap[k] = v;
+                                    }
+                                });
+                                msg = msg.slice(close + 1).trim();
+                            }
+                        }
+
+                        let t = rawMap.get(tid);
+                        if (!t) {
+                            t = {
+                                id: tid,
+                                logs: [],
+                                start: ts,
+                                end: ts,
+                                err: false,
+                                tags: {},
+                            };
+                            rawMap.set(tid, t);
+                        }
+
+                        Object.assign(t.tags, tagsMap);
+                        t.logs.push({ ts, lvl, msg });
+                        t.end = ts;
+                        if (lvl === 2) t.err = true;
+
+                        if (ts < globalStart) globalStart = ts;
+                        if (ts > globalEnd) globalEnd = ts;
+                    }
+
+                    // Update progress
+                    const pct = 30 + (end / total) * 60;
+                    setProgress(pct);
+                    dom.dropStatus.textContent = `Parsing... ${Math.round((end / total) * 100)}%`;
+
+                    // Yield to UI
+                    await new Promise((r) => setTimeout(r, 0));
+                }
+
+                setProgress(92);
+                dom.dropStatus.textContent = "Processing traces...";
+                await new Promise((r) => setTimeout(r, 0));
+
+                traces = Array.from(rawMap.values());
+                traces.forEach((t) => {
+                    t.dur = (t.end - t.start) / 1e6;
+                    if (t.dur > maxDur) maxDur = t.dur;
                 });
-                msg = msg.slice(close + 1).trim();
-              }
+                traces.sort((a, b) => b.start - a.start);
+
+                setProgress(100, true);
+                dom.dropStatus.textContent = "";
+
+                applyFilter();
+                dom.drop.classList.add("hidden");
             }
 
-            let t = rawMap.get(tid);
-            if (!t) {
-              t = { id: tid, logs: [], start: ts, end: ts, err: false, tags: {} };
-              rawMap.set(tid, t);
+            function addTag(key, val) {
+                const str = `${key}:${val}`;
+                if (!searchTags.includes(str)) {
+                    searchTags.push(str);
+                    updateChips();
+                    applyFilter();
+                }
             }
 
-            Object.assign(t.tags, tagsMap);
-            t.logs.push({ ts, lvl, msg });
-            t.end = ts;
-            if (lvl === 2) t.err = true;
+            function updateChips() {
+                dom.chips.innerHTML = searchTags
+                    .map(
+                        (tag, i) =>
+                            `<div class="filter-chip">${tag}<span onclick="removeTag(${i})">×</span></div>`,
+                    )
+                    .join("");
+                dom.search.placeholder =
+                    searchTags.length > 0 ? "" : "Filter...";
+            }
 
-            if (ts < globalStart) globalStart = ts;
-            if (ts > globalEnd) globalEnd = ts;
-          }
+            function removeTag(i) {
+                searchTags.splice(i, 1);
+                updateChips();
+                applyFilter();
+                dom.search.focus();
+            }
 
-          // Update progress
-          const pct = 30 + ((end / total) * 60);
-          setProgress(pct);
-          dom.dropStatus.textContent = `Parsing... ${Math.round((end / total) * 100)}%`;
-          
-          // Yield to UI
-          await new Promise(r => setTimeout(r, 0));
-        }
+            function applySort() {
+                const mode = dom.sort.value;
+                if (mode === "start-desc")
+                    filteredTraces.sort((a, b) => b.start - a.start);
+                else if (mode === "start-asc")
+                    filteredTraces.sort((a, b) => a.start - b.start);
+                else if (mode === "dur-desc")
+                    filteredTraces.sort((a, b) => b.dur - a.dur);
+                else if (mode === "dur-asc")
+                    filteredTraces.sort((a, b) => a.dur - b.dur);
+                renderList();
+            }
 
-        setProgress(92);
-        dom.dropStatus.textContent = "Processing traces...";
-        await new Promise(r => setTimeout(r, 0));
+            function applyFilter() {
+                const currentInput = dom.search.value.toLowerCase().trim();
+                const allTokens = [...searchTags, currentInput].filter(
+                    (x) => x,
+                );
+                const conditions = allTokens.map((tk) => {
+                    const low = tk.toLowerCase();
+                    if (low === "err") return { type: "lvl", val: "err" };
+                    if (low.includes(":")) {
+                        const idx = low.indexOf(":");
+                        return {
+                            type: "tag",
+                            k: low.slice(0, idx).trim(),
+                            v: low.slice(idx + 1).trim(),
+                        };
+                    }
+                    if (low.startsWith(">"))
+                        return {
+                            type: "dur_gt",
+                            val: parseFloat(low.slice(1)),
+                        };
+                    if (low.startsWith("-"))
+                        return { type: "not", val: low.slice(1) };
+                    return { type: "text", val: low };
+                });
 
-        traces = Array.from(rawMap.values());
-        traces.forEach((t) => {
-          t.dur = (t.end - t.start) / 1e6;
-          if (t.dur > maxDur) maxDur = t.dur;
-        });
-        traces.sort((a, b) => b.start - a.start);
+                filteredTraces = traces.filter((t) => {
+                    return conditions.every((c) => {
+                        if (c.type === "lvl") return t.err;
+                        if (c.type === "tag")
+                            return (
+                                t.tags[c.k] && t.tags[c.k].toLowerCase() === c.v
+                            );
+                        if (c.type === "dur_gt") return t.dur > c.val;
+                        if (c.type === "not")
+                            return (
+                                !t.id.includes(c.val) &&
+                                !t.logs.some((l) =>
+                                    l.msg.toLowerCase().includes(c.val),
+                                )
+                            );
+                        return (
+                            t.id.includes(c.val) ||
+                            t.logs.some((l) =>
+                                l.msg.toLowerCase().includes(c.val),
+                            ) ||
+                            Object.values(t.tags).some((v) =>
+                                v.toLowerCase().includes(c.val),
+                            )
+                        );
+                    });
+                });
 
-        setProgress(100, true);
-        dom.dropStatus.textContent = "";
-        
-        applyFilter();
-        dom.drop.classList.add("hidden");
-      }
+                updateStats();
+                applySort();
+                drawHeatmap();
+            }
 
-      function addTag(key, val) {
-        const str = `${key}:${val}`;
-        if (!searchTags.includes(str)) {
-          searchTags.push(str);
-          updateChips();
-          applyFilter();
-        }
-      }
+            function updateStats() {
+                dom.sC.textContent = traces.length;
+                dom.sE.textContent = filteredTraces.filter((t) => t.err).length;
+                const sorted = filteredTraces
+                    .map((t) => t.dur)
+                    .sort((a, b) => a - b);
+                dom.sP.textContent =
+                    (sorted[Math.floor(sorted.length * 0.95)] || 0).toFixed(1) +
+                    "ms";
+            }
 
-      function updateChips() {
-        dom.chips.innerHTML = searchTags
-          .map((tag, i) => `<div class="filter-chip">${tag}<span onclick="removeTag(${i})">×</span></div>`)
-          .join("");
-        dom.search.placeholder = searchTags.length > 0 ? "" : "Filter...";
-      }
+            function renderList() {
+                dom.fCount.textContent = filteredTraces.length;
+                dom.list.innerHTML = filteredTraces
+                    .slice(0, 100)
+                    .map((t) => {
+                        const tagHtml = Object.entries(t.tags)
+                            .slice(0, 3)
+                            .map(
+                                ([k, v]) =>
+                                    `<span class="tag-mini" onclick="event.stopPropagation(); addTag('${k}','${v}')">${k}:${v}</span>`,
+                            )
+                            .join("");
+                        return `<div id="row-${t.id}" class="t ${t.err ? "err" : ""} ${t.id === activeId ? "active" : ""}" onclick="select('${t.id}')"><div class="top"><span class="id">${t.id.slice(0, 16)}</span><span style="color:${t.dur > 100 ? "var(--warn)" : "inherit"}">${t.dur.toFixed(1)}ms</span></div><div class="bot"><span>${t.logs.length} logs</span><span>${new Date(t.start / 1e6).toLocaleTimeString()}</span></div><div class="tags">${tagHtml}</div></div>`;
+                    })
+                    .join("");
+            }
 
-      function removeTag(i) {
-        searchTags.splice(i, 1);
-        updateChips();
-        applyFilter();
-        dom.search.focus();
-      }
+            function select(tid, scroll = false) {
+                activeId = tid;
+                const t = traces.find((x) => x.id === tid);
+                if (!t) return;
+                dom.empty.style.display = "none";
+                dom.detail.style.display = "block";
 
-      function applySort() {
-        const mode = dom.sort.value;
-        if (mode === "start-desc") filteredTraces.sort((a, b) => b.start - a.start);
-        else if (mode === "start-asc") filteredTraces.sort((a, b) => a.start - b.start);
-        else if (mode === "dur-desc") filteredTraces.sort((a, b) => b.dur - a.dur);
-        else if (mode === "dur-asc") filteredTraces.sort((a, b) => a.dur - b.dur);
-        renderList();
-      }
+                document
+                    .querySelectorAll(".t.active")
+                    .forEach((e) => e.classList.remove("active"));
+                const row = document.getElementById("row-" + tid);
+                if (row) {
+                    row.classList.add("active");
+                    if (scroll)
+                        row.scrollIntoView({
+                            block: "center",
+                            behavior: "smooth",
+                        });
+                }
+                dom.mId.textContent = t.id;
+                dom.mDur.textContent = t.dur.toFixed(2) + "ms Total";
+                dom.mEv.textContent = t.logs.length + " Events";
+                dom.mTags.innerHTML = Object.entries(t.tags)
+                    .map(
+                        ([k, v]) =>
+                            `<span class="pill tag" onclick="addTag('${k}','${v}')">${k}:${v}</span>`,
+                    )
+                    .join("");
+                renderSimple(t);
+                renderGantt(t);
+                drawHeatmap();
+            }
 
-      function applyFilter() {
-        const currentInput = dom.search.value.toLowerCase().trim();
-        const allTokens = [...searchTags, currentInput].filter((x) => x);
-        const conditions = allTokens.map((tk) => {
-          const low = tk.toLowerCase();
-          if (low === "err") return { type: "lvl", val: "err" };
-          if (low.includes(":")) {
-            const idx = low.indexOf(":");
-            return { type: "tag", k: low.slice(0, idx).trim(), v: low.slice(idx + 1).trim() };
-          }
-          if (low.startsWith(">")) return { type: "dur_gt", val: parseFloat(low.slice(1)) };
-          if (low.startsWith("-")) return { type: "not", val: low.slice(1) };
-          return { type: "text", val: low };
-        });
+            function renderSimple(t) {
+                let html = "",
+                    stack = [],
+                    indent = 0;
+                for (let i = 0; i < Math.min(t.logs.length, 600); i++) {
+                    const l = t.logs[i],
+                        isS = l.msg.startsWith(">"),
+                        isE = l.msg.startsWith("<");
+                    if (isE && indent > 0) indent--;
+                    const rel = (l.ts - t.start) / 1e6;
+                    let durStr = "";
+                    if (isS) stack.push(l.ts);
+                    if (isE && stack.length)
+                        durStr = ((l.ts - stack.pop()) / 1e6).toFixed(2) + "ms";
 
-        filteredTraces = traces.filter((t) => {
-          return conditions.every((c) => {
-            if (c.type === "lvl") return t.err;
-            if (c.type === "tag") return t.tags[c.k] && t.tags[c.k].toLowerCase() === c.v;
-            if (c.type === "dur_gt") return t.dur > c.val;
-            if (c.type === "not") return !t.id.includes(c.val) && !t.logs.some((l) => l.msg.toLowerCase().includes(c.val));
-            return (
-              t.id.includes(c.val) ||
-              t.logs.some((l) => l.msg.toLowerCase().includes(c.val)) ||
-              Object.values(t.tags).some((v) => v.toLowerCase().includes(c.val))
+                    const cls = isS ? "s" : isE ? "r" : l.lvl === 2 ? "x" : "r";
+                    const tree =
+                        "  │ ".repeat(indent) +
+                        (isS ? "┌ " : isE ? "└ " : "├ ");
+                    html += `<div class="r ${cls}"><span class="ts">${rel.toFixed(1)}ms</span><span class="du">${durStr}</span><span class="tr">${tree}</span><span class="ms">${isS || isE ? l.msg.slice(2) : l.msg}</span><button class="copy-btn" onclick="event.stopPropagation(); navigator.clipboard.writeText('${l.msg.replace(/'/g, "\\'")}'); this.textContent='✓'; setTimeout(() => this.textContent='copy', 500)">copy</button></div>`;
+                    if (isS) indent++;
+                }
+                dom.simple.innerHTML = html;
+            }
+
+            function renderGantt(t) {
+                let stack = [],
+                    scopes = [];
+                t.logs.forEach((l) => {
+                    if (l.msg.startsWith(">")) {
+                        stack.push({
+                            name: l.msg.slice(2),
+                            start: l.ts,
+                            depth: stack.length,
+                        });
+                    } else if (l.msg.startsWith("<") && stack.length) {
+                        const s = stack.pop();
+                        s.end = l.ts;
+                        s.dur = (s.end - s.start) / 1e6;
+                        scopes.push(s);
+                    }
+                });
+                scopes.sort((a, b) => a.start - b.start);
+                dom.gantt.innerHTML =
+                    scopes
+                        .map((s) => {
+                            const left =
+                                ((s.start - t.start) / 1e6 / t.dur) * 100;
+                            const width = Math.max((s.dur / t.dur) * 100, 0.5);
+                            return `<div class="g-row"><div class="g-lbl" style="padding-left:${s.depth * 12}px">${s.name}</div><div class="g-track"><div class="g-bar scope" style="left:${left}%; width:${width}%"></div><span class="g-dur" style="left:${left + width}%">${s.dur.toFixed(1)}ms</span></div></div>`;
+                        })
+                        .join("") ||
+                    '<div style="padding:20px;color:#666">No scopes found</div>';
+            }
+
+            function drawHeatmap() {
+                const cvs = dom.cvs,
+                    ctx = cvs.getContext("2d");
+                const rect = cvs.parentElement.getBoundingClientRect();
+                const dpr = window.devicePixelRatio || 1;
+                const w = rect.width,
+                    h = rect.height;
+
+                cvs.width = w * dpr;
+                cvs.height = h * dpr;
+                ctx.scale(dpr, dpr);
+                ctx.clearRect(0, 0, w, h);
+
+                if (!filteredTraces.length) {
+                    heatmapPoints = [];
+                    return;
+                }
+
+                const span = globalEnd - globalStart || 1;
+                const maxY = Math.log(maxDur + 1) || 1;
+                const padL = 40,
+                    padR = 10,
+                    padT = 20,
+                    padB = 20;
+                const plotW = w - padL - padR;
+                const plotH = h - padT - padB;
+
+                // Sample traces if too many (keep errors and active)
+                const MAX_POINTS = 3000;
+                let toRender = filteredTraces;
+
+                if (filteredTraces.length > MAX_POINTS) {
+                    const errors = filteredTraces.filter(
+                        (t) => t.err || t.id === activeId,
+                    );
+                    const normals = filteredTraces.filter(
+                        (t) => !t.err && t.id !== activeId,
+                    );
+                    const sampleRate = Math.max(
+                        1,
+                        Math.floor(
+                            normals.length / (MAX_POINTS - errors.length),
+                        ),
+                    );
+                    const sampled = normals.filter(
+                        (_, i) => i % sampleRate === 0,
+                    );
+                    toRender = [...errors, ...sampled];
+                }
+
+                // Precompute positions
+                heatmapPoints = [];
+                for (const t of toRender) {
+                    const x = padL + ((t.start - globalStart) / span) * plotW;
+                    const y = h - padB - (Math.log(t.dur + 1) / maxY) * plotH;
+                    heatmapPoints.push({ t, x, y });
+                }
+
+                // Batch render normal points
+                ctx.fillStyle = "#52525b";
+                ctx.beginPath();
+                for (const p of heatmapPoints) {
+                    if (!p.t.err && p.t.id !== activeId) {
+                        ctx.moveTo(p.x + 1.5, p.y);
+                        ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+                    }
+                }
+                ctx.fill();
+
+                // Batch render error points
+                ctx.fillStyle = "#ef4444";
+                ctx.beginPath();
+                for (const p of heatmapPoints) {
+                    if (p.t.err && p.t.id !== activeId) {
+                        ctx.moveTo(p.x + 3, p.y);
+                        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+                    }
+                }
+                ctx.fill();
+
+                // Render active point with glow
+                const active = heatmapPoints.find((p) => p.t.id === activeId);
+                if (active) {
+                    ctx.shadowColor = "#fff";
+                    ctx.shadowBlur = 6;
+                    ctx.fillStyle = "#fff";
+                    ctx.beginPath();
+                    ctx.arc(active.x, active.y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+
+            function switchView(v) {
+                dom.simple.style.display = v === "simple" ? "block" : "none";
+                dom.gantt.style.display = v === "gantt" ? "block" : "none";
+                document
+                    .querySelectorAll(".tab")
+                    .forEach((t) =>
+                        t.classList.toggle(
+                            "active",
+                            t.innerText.toLowerCase().includes(v),
+                        ),
+                    );
+            }
+
+            // --- EVENTS ---
+            dom.search.addEventListener("keydown", (e) => {
+                const val = dom.search.value.trim();
+                if (e.key === "Enter" && val) {
+                    e.preventDefault();
+                    searchTags.push(val);
+                    dom.search.value = "";
+                    updateChips();
+                    applyFilter();
+                } else if (
+                    e.key === "Backspace" &&
+                    !dom.search.value &&
+                    searchTags.length > 0
+                ) {
+                    searchTags.pop();
+                    updateChips();
+                    applyFilter();
+                }
+            });
+            dom.search.addEventListener("input", () =>
+                setTimeout(applyFilter, 50),
             );
-          });
-        });
 
-        updateStats();
-        applySort();
-        drawHeatmap();
-      }
+            function getTraceAtEvent(e) {
+                const rect = dom.cvs.getBoundingClientRect();
+                const mx = e.clientX - rect.left,
+                    my = e.clientY - rect.top;
+                let closest = null,
+                    minD = 100;
 
-      function updateStats() {
-        dom.sC.textContent = traces.length;
-        dom.sE.textContent = filteredTraces.filter((t) => t.err).length;
-        const sorted = filteredTraces.map((t) => t.dur).sort((a, b) => a - b);
-        dom.sP.textContent = (sorted[Math.floor(sorted.length * 0.95)] || 0).toFixed(1) + "ms";
-      }
+                for (const p of heatmapPoints) {
+                    const dx = mx - p.x,
+                        dy = my - p.y;
+                    const d2 = dx * dx + dy * dy;
+                    if (d2 < minD) {
+                        minD = d2;
+                        closest = p;
+                    }
+                }
+                return closest;
+            }
 
-      function renderList() {
-        dom.fCount.textContent = filteredTraces.length;
-        dom.list.innerHTML = filteredTraces.slice(0, 100).map((t) => {
-            const tagHtml = Object.entries(t.tags)
-              .slice(0, 3)
-              .map(([k, v]) => `<span class="tag-mini" onclick="event.stopPropagation(); addTag('${k}','${v}')">${k}:${v}</span>`)
-              .join("");
-            return `<div id="row-${t.id}" class="t ${t.err ? "err" : ""} ${t.id === activeId ? "active" : ""}" onclick="select('${t.id}')"><div class="top"><span class="id">${t.id.slice(0, 16)}</span><span style="color:${t.dur > 100 ? "var(--warn)" : "inherit"}">${t.dur.toFixed(1)}ms</span></div><div class="bot"><span>${t.logs.length} logs</span><span>${new Date(t.start / 1e6).toLocaleTimeString()}</span></div><div class="tags">${tagHtml}</div></div>`;
-          }).join("");
-      }
+            dom.cvs.addEventListener("mousemove", (e) => {
+                const p = getTraceAtEvent(e);
+                if (p) {
+                    dom.cvs.style.cursor = "pointer";
+                    dom.tooltip.style.opacity = 1;
+                    dom.tooltip.style.left = p.x + "px";
+                    dom.tooltip.style.top = p.y + "px";
+                    dom.tooltip.innerHTML = `<b>${p.t.dur.toFixed(1)}ms</b><br>${p.t.id.slice(0, 8)}`;
+                } else {
+                    dom.cvs.style.cursor = "default";
+                    dom.tooltip.style.opacity = 0;
+                }
+            });
 
-      function select(tid, scroll = false) {
-        activeId = tid;
-        const t = traces.find((x) => x.id === tid);
-        if (!t) return;
-        dom.empty.style.display = "none";
-        dom.detail.style.display = "block";
-        
-        document.querySelectorAll(".t.active").forEach((e) => e.classList.remove("active"));
-        const row = document.getElementById("row-" + tid);
-        if (row) {
-          row.classList.add("active");
-          if (scroll) row.scrollIntoView({ block: "center", behavior: "smooth" });
-        }
-        dom.mId.textContent = t.id;
-        dom.mDur.textContent = t.dur.toFixed(2) + "ms Total";
-        dom.mEv.textContent = t.logs.length + " Events";
-        dom.mTags.innerHTML = Object.entries(t.tags)
-          .map(([k, v]) => `<span class="pill tag" onclick="addTag('${k}','${v}')">${k}:${v}</span>`)
-          .join("");
-        renderSimple(t);
-        renderGantt(t);
-        drawHeatmap();
-      }
+            dom.cvs.addEventListener("click", (e) => {
+                const p = getTraceAtEvent(e);
+                if (p) select(p.t.id, true);
+            });
 
-      function renderSimple(t) {
-        let html = "", stack = [], indent = 0;
-        for (let i = 0; i < Math.min(t.logs.length, 600); i++) {
-          const l = t.logs[i], isS = l.msg.startsWith(">"), isE = l.msg.startsWith("<");
-          if (isE && indent > 0) indent--;
-          const rel = (l.ts - t.start) / 1e6;
-          let durStr = "";
-          if (isS) stack.push(l.ts);
-          if (isE && stack.length) durStr = ((l.ts - stack.pop()) / 1e6).toFixed(2) + "ms";
-          
-          const cls = isS ? "s" : isE ? "r" : l.lvl === 2 ? "x" : "r";
-          const tree = "  │ ".repeat(indent) + (isS ? "┌ " : isE ? "└ " : "├ ");
-          html += `<div class="r ${cls}"><span class="ts">${rel.toFixed(1)}ms</span><span class="du">${durStr}</span><span class="tr">${tree}</span><span class="ms">${isS || isE ? l.msg.slice(2) : l.msg}</span></div>`;
-          if (isS) indent++;
-        }
-        dom.simple.innerHTML = html;
-      }
+            // Drag and Drop & File Input
+            window.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                dom.drop.classList.remove("hidden");
+            });
+            dom.drop.addEventListener("dragleave", () =>
+                dom.drop.classList.add("hidden"),
+            );
+            dom.drop.addEventListener("drop", (e) => {
+                e.preventDefault();
+                handleFile(e.dataTransfer.files[0]);
+            });
+            dom.drop.addEventListener("click", () => dom.fileInput.click());
+            dom.fileInput.addEventListener("change", (e) =>
+                handleFile(e.target.files[0]),
+            );
 
-      function renderGantt(t) {
-        let stack = [], scopes = [];
-        t.logs.forEach((l) => {
-          if (l.msg.startsWith(">")) {
-            stack.push({ name: l.msg.slice(2), start: l.ts, depth: stack.length });
-          } else if (l.msg.startsWith("<") && stack.length) {
-            const s = stack.pop();
-            s.end = l.ts; s.dur = (s.end - s.start) / 1e6;
-            scopes.push(s);
-          }
-        });
-        scopes.sort((a, b) => a.start - b.start);
-        dom.gantt.innerHTML = scopes.map((s) => {
-            const left = ((s.start - t.start) / 1e6 / t.dur) * 100;
-            const width = Math.max((s.dur / t.dur) * 100, 0.5);
-            return `<div class="g-row"><div class="g-lbl" style="padding-left:${s.depth * 12}px">${s.name}</div><div class="g-track"><div class="g-bar scope" style="left:${left}%; width:${width}%"></div><span class="g-dur" style="left:${left + width}%">${s.dur.toFixed(1)}ms</span></div></div>`;
-          }).join("") || '<div style="padding:20px;color:#666">No scopes found</div>';
-      }
-
-      function drawHeatmap() {
-        const cvs = dom.cvs, ctx = cvs.getContext("2d");
-        const rect = cvs.parentElement.getBoundingClientRect();
-        const dpr = window.devicePixelRatio || 1;
-        const w = rect.width, h = rect.height;
-        
-        cvs.width = w * dpr;
-        cvs.height = h * dpr;
-        ctx.scale(dpr, dpr);
-        ctx.clearRect(0, 0, w, h);
-
-        if (!filteredTraces.length) {
-          heatmapPoints = [];
-          return;
-        }
-
-        const span = globalEnd - globalStart || 1;
-        const maxY = Math.log(maxDur + 1) || 1;
-        const padL = 40, padR = 10, padT = 20, padB = 20;
-        const plotW = w - padL - padR;
-        const plotH = h - padT - padB;
-
-        // Sample traces if too many (keep errors and active)
-        const MAX_POINTS = 3000;
-        let toRender = filteredTraces;
-        
-        if (filteredTraces.length > MAX_POINTS) {
-          const errors = filteredTraces.filter(t => t.err || t.id === activeId);
-          const normals = filteredTraces.filter(t => !t.err && t.id !== activeId);
-          const sampleRate = Math.max(1, Math.floor(normals.length / (MAX_POINTS - errors.length)));
-          const sampled = normals.filter((_, i) => i % sampleRate === 0);
-          toRender = [...errors, ...sampled];
-        }
-
-        // Precompute positions
-        heatmapPoints = [];
-        for (const t of toRender) {
-          const x = padL + ((t.start - globalStart) / span) * plotW;
-          const y = h - padB - (Math.log(t.dur + 1) / maxY) * plotH;
-          heatmapPoints.push({ t, x, y });
-        }
-
-        // Batch render normal points
-        ctx.fillStyle = "#52525b";
-        ctx.beginPath();
-        for (const p of heatmapPoints) {
-          if (!p.t.err && p.t.id !== activeId) {
-            ctx.moveTo(p.x + 1.5, p.y);
-            ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
-          }
-        }
-        ctx.fill();
-
-        // Batch render error points
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath();
-        for (const p of heatmapPoints) {
-          if (p.t.err && p.t.id !== activeId) {
-            ctx.moveTo(p.x + 3, p.y);
-            ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-          }
-        }
-        ctx.fill();
-
-        // Render active point with glow
-        const active = heatmapPoints.find(p => p.t.id === activeId);
-        if (active) {
-          ctx.shadowColor = "#fff";
-          ctx.shadowBlur = 6;
-          ctx.fillStyle = "#fff";
-          ctx.beginPath();
-          ctx.arc(active.x, active.y, 4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.shadowBlur = 0;
-        }
-      }
-
-      function switchView(v) {
-        dom.simple.style.display = v === "simple" ? "block" : "none";
-        dom.gantt.style.display = v === "gantt" ? "block" : "none";
-        document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.innerText.toLowerCase().includes(v)));
-      }
-
-      // --- EVENTS ---
-      dom.search.addEventListener("keydown", (e) => {
-        const val = dom.search.value.trim();
-        if (e.key === "Enter" && val) {
-          e.preventDefault(); searchTags.push(val); dom.search.value = "";
-          updateChips(); applyFilter();
-        } else if (e.key === "Backspace" && !dom.search.value && searchTags.length > 0) {
-          searchTags.pop(); updateChips(); applyFilter();
-        }
-      });
-      dom.search.addEventListener("input", () => setTimeout(applyFilter, 50));
-
-      function getTraceAtEvent(e) {
-        const rect = dom.cvs.getBoundingClientRect();
-        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-        let closest = null, minD = 100;
-
-        for (const p of heatmapPoints) {
-          const dx = mx - p.x, dy = my - p.y;
-          const d2 = dx * dx + dy * dy;
-          if (d2 < minD) {
-            minD = d2;
-            closest = p;
-          }
-        }
-        return closest;
-      }
-
-      dom.cvs.addEventListener("mousemove", (e) => {
-        const p = getTraceAtEvent(e);
-        if (p) {
-          dom.cvs.style.cursor = "pointer";
-          dom.tooltip.style.opacity = 1;
-          dom.tooltip.style.left = p.x + "px";
-          dom.tooltip.style.top = p.y + "px";
-          dom.tooltip.innerHTML = `<b>${p.t.dur.toFixed(1)}ms</b><br>${p.t.id.slice(0, 8)}`;
-        } else {
-          dom.cvs.style.cursor = "default";
-          dom.tooltip.style.opacity = 0;
-        }
-      });
-
-      dom.cvs.addEventListener("click", (e) => {
-        const p = getTraceAtEvent(e);
-        if (p) select(p.t.id, true);
-      });
-
-      // Drag and Drop & File Input
-      window.addEventListener("dragover", (e) => {
-        e.preventDefault(); dom.drop.classList.remove("hidden");
-      });
-      dom.drop.addEventListener("dragleave", () => dom.drop.classList.add("hidden"));
-      dom.drop.addEventListener("drop", (e) => {
-        e.preventDefault(); handleFile(e.dataTransfer.files[0]);
-      });
-      dom.drop.addEventListener("click", () => dom.fileInput.click());
-      dom.fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
-
-      // Resize & Keys
-      window.addEventListener("resize", drawHeatmap);
-      document.addEventListener("keydown", (e) => {
-        if (e.target === dom.search || !filteredTraces.length) return;
-        const idx = filteredTraces.findIndex((t) => t.id === activeId);
-        if (e.key === "ArrowDown") {
-          const next = filteredTraces[Math.min(idx + 1, filteredTraces.length - 1)];
-          if (next) select(next.id, true);
-          e.preventDefault();
-        }
-        if (e.key === "ArrowUp") {
-          const prev = filteredTraces[Math.max(idx - 1, 0)];
-          if (prev) select(prev.id, true);
-          e.preventDefault();
-        }
-      });
-    </script>
-  </body>
+            // Resize & Keys
+            window.addEventListener("resize", drawHeatmap);
+            document.addEventListener("keydown", (e) => {
+                if (e.target === dom.search || !filteredTraces.length) return;
+                const idx = filteredTraces.findIndex((t) => t.id === activeId);
+                if (e.key === "ArrowDown") {
+                    const next =
+                        filteredTraces[
+                            Math.min(idx + 1, filteredTraces.length - 1)
+                        ];
+                    if (next) select(next.id, true);
+                    e.preventDefault();
+                }
+                if (e.key === "ArrowUp") {
+                    const prev = filteredTraces[Math.max(idx - 1, 0)];
+                    if (prev) select(prev.id, true);
+                    e.preventDefault();
+                }
+            });
+        </script>
+    </body>
 </html>
